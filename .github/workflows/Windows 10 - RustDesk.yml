@@ -1,32 +1,168 @@
-- name: Start RustDesk
-  shell: powershell
-  run: |
-    $rustdesk = "C:\Program Files\RustDesk\rustdesk.exe"
+name: Windows RustDesk
 
-    Write-Host "Starting RustDesk..."
-    
-    Start-Process `
-      -FilePath $rustdesk `
-      -WindowStyle Hidden
+on:
+  workflow_dispatch:
 
-    Start-Sleep -Seconds 15
+jobs:
+  windows:
+    name: Start Windows RustDesk
+    runs-on: windows-latest
+    timeout-minutes: 350
 
-    Write-Host "Checking RustDesk process..."
+    steps:
 
-    $process = Get-Process -Name "rustdesk" -ErrorAction SilentlyContinue
+      # ==============================
+      # 1. Download RustDesk
+      # ==============================
+      - name: Download RustDesk
+        shell: powershell
+        run: |
+          $url = "https://github.com/rustdesk/rustdesk/releases/download/1.2.1/rustdesk-1.2.1-x86_64.exe"
+          $exe = "$env:TEMP\rustdesk.exe"
 
-    if ($process) {
-        Write-Host "RustDesk is running."
-    } else {
-        Write-Host "RustDesk process not found."
-        exit 1
-    }
+          Write-Host "Downloading RustDesk..."
 
-    Write-Host "Getting RustDesk ID..."
+          curl.exe -L --retry 5 --retry-delay 5 `
+            -o "$exe" `
+            "$url"
 
-    $id = & $rustdesk --get-id 2>&1
+          if (!(Test-Path $exe)) {
+              Write-Host "RustDesk download failed."
+              exit 1
+          }
 
-    Write-Host "=============================="
-    Write-Host "RustDesk ID:"
-    Write-Host $id
-    Write-Host "=============================="
+          $size = (Get-Item $exe).Length
+
+          Write-Host "Downloaded file size: $size bytes"
+
+          if ($size -lt 1000000) {
+              Write-Host "Downloaded file looks invalid."
+              exit 1
+          }
+
+          Write-Host "RustDesk downloaded successfully."
+
+      # ==============================
+      # 2. Install RustDesk
+      # ==============================
+      - name: Install RustDesk
+        shell: powershell
+        run: |
+          $exe = "$env:TEMP\rustdesk.exe"
+
+          Write-Host "Installing RustDesk..."
+
+          $p = Start-Process `
+            -FilePath $exe `
+            -ArgumentList "--silent-install" `
+            -PassThru
+
+          Write-Host "Installer PID: $($p.Id)"
+
+          $finished = $p.WaitForExit(60000)
+
+          if (!$finished) {
+              Write-Host "Installer did not finish within 60 seconds."
+              Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+              exit 1
+          }
+
+          Write-Host "Installer exited with code: $($p.ExitCode)"
+
+          Start-Sleep -Seconds 5
+
+          $paths = @(
+              "C:\Program Files\RustDesk\rustdesk.exe",
+              "C:\Program Files (x86)\RustDesk\rustdesk.exe"
+          )
+
+          $rustdesk = $paths |
+              Where-Object { Test-Path $_ } |
+              Select-Object -First 1
+
+          if (!$rustdesk) {
+              Write-Host "RustDesk executable not found."
+              exit 1
+          }
+
+          Write-Host "RustDesk installed successfully."
+          Write-Host "Path: $rustdesk"
+
+      # ==============================
+      # 3. Start RustDesk
+      # ==============================
+      - name: Start RustDesk
+        shell: powershell
+        run: |
+          $rustdesk = "C:\Program Files\RustDesk\rustdesk.exe"
+
+          if (!(Test-Path $rustdesk)) {
+              $rustdesk = "C:\Program Files (x86)\RustDesk\rustdesk.exe"
+          }
+
+          if (!(Test-Path $rustdesk)) {
+              Write-Host "RustDesk executable not found."
+              exit 1
+          }
+
+          Write-Host "Starting RustDesk..."
+
+          Start-Process `
+            -FilePath $rustdesk `
+            -WindowStyle Hidden
+
+          Start-Sleep -Seconds 15
+
+          Write-Host "Checking RustDesk process..."
+
+          $process = Get-Process `
+            -Name "rustdesk" `
+            -ErrorAction SilentlyContinue
+
+          if ($process) {
+              Write-Host "RustDesk is running."
+          }
+          else {
+              Write-Host "RustDesk process not found."
+              exit 1
+          }
+
+      # ==============================
+      # 4. Get RustDesk ID
+      # ==============================
+      - name: Get RustDesk ID
+        shell: powershell
+        run: |
+          $rustdesk = "C:\Program Files\RustDesk\rustdesk.exe"
+
+          if (!(Test-Path $rustdesk)) {
+              $rustdesk = "C:\Program Files (x86)\RustDesk\rustdesk.exe"
+          }
+
+          Write-Host "Getting RustDesk ID..."
+
+          $id = & $rustdesk --get-id 2>&1
+
+          Write-Host "=============================="
+          Write-Host "RustDesk ID:"
+          Write-Host $id
+          Write-Host "=============================="
+
+          if (!$id) {
+              Write-Host "RustDesk ID was not returned."
+              exit 1
+          }
+
+      # ==============================
+      # 5. Keep Windows Runner Alive
+      # ==============================
+      - name: Keep Runner Alive
+        shell: powershell
+        run: |
+          Write-Host "================================="
+          Write-Host "RustDesk is running."
+          Write-Host "Windows runner is active."
+          Write-Host "Keeping session alive..."
+          Write-Host "================================="
+
+          Start-Sleep -Seconds 18000
