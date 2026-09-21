@@ -10,54 +10,170 @@ jobs:
 
     steps:
 
-      - name: Install RustDesk
+      # -----------------------------------
+      # 1. Download RustDesk
+      # -----------------------------------
+      - name: Download RustDesk
         shell: powershell
         run: |
           $url = "https://github.com/rustdesk/rustdesk/releases/latest/download/rustdesk.exe"
           $exe = "$env:TEMP\rustdesk.exe"
 
           Write-Host "Downloading RustDesk..."
-          Invoke-WebRequest -Uri $url -OutFile $exe
+
+          curl.exe -L `
+            --retry 5 `
+            --retry-delay 5 `
+            --connect-timeout 30 `
+            -o "$exe" `
+            "$url"
+
+          if (!(Test-Path $exe)) {
+              Write-Host "RustDesk download failed"
+              exit 1
+          }
+
+          $size = (Get-Item $exe).Length
+          Write-Host "Downloaded file size: $size bytes"
+
+          if ($size -lt 1000000) {
+              Write-Host "Downloaded file looks invalid"
+              exit 1
+          }
+
+          Write-Host "RustDesk downloaded successfully"
+
+
+      # -----------------------------------
+      # 2. Install RustDesk
+      # -----------------------------------
+      - name: Install RustDesk
+        shell: powershell
+        run: |
+          $exe = "$env:TEMP\rustdesk.exe"
 
           Write-Host "Installing RustDesk..."
-          Start-Process $exe -ArgumentList "--silent-install" -Wait
 
-          Start-Sleep -Seconds 10
+          Start-Process `
+            -FilePath $exe `
+            -ArgumentList "--silent-install" `
+            -Wait
 
-      - name: Configure RustDesk
+          Start-Sleep -Seconds 15
+
+          $rustdesk = "C:\Program Files\RustDesk\rustdesk.exe"
+
+          if (!(Test-Path $rustdesk)) {
+              Write-Host "RustDesk executable not found"
+              exit 1
+          }
+
+          Write-Host "RustDesk installed successfully"
+
+
+      # -----------------------------------
+      # 3. Install and start RustDesk service
+      # -----------------------------------
+      - name: Configure RustDesk Service
         shell: powershell
         run: |
           $rustdesk = "C:\Program Files\RustDesk\rustdesk.exe"
 
-          if (!(Test-Path $rustdesk)) {
-            Write-Host "RustDesk executable not found"
-            exit 1
-          }
-
           Write-Host "Installing RustDesk service..."
-          Start-Process $rustdesk -ArgumentList "--install-service" -Wait
+
+          Start-Process `
+            -FilePath $rustdesk `
+            -ArgumentList "--install-service" `
+            -Wait
 
           Start-Sleep -Seconds 10
 
           Write-Host "Starting RustDesk service..."
-          Start-Service RustDesk -ErrorAction SilentlyContinue
+
+          Start-Service -Name "RustDesk" -ErrorAction SilentlyContinue
 
           Start-Sleep -Seconds 10
 
-          Write-Host "Setting password..."
-          Start-Process $rustdesk -ArgumentList "--password MyRustDesk@123" -Wait
+          $service = Get-Service -Name "RustDesk" -ErrorAction SilentlyContinue
+
+          if ($null -eq $service) {
+              Write-Host "RustDesk service was not found"
+              exit 1
+          }
+
+          Write-Host "RustDesk service status: $($service.Status)"
+
+          if ($service.Status -ne "Running") {
+              Write-Host "RustDesk service is not running"
+              exit 1
+          }
+
+          Write-Host "RustDesk service is running"
+
+
+      # -----------------------------------
+      # 4. Set RustDesk password and get ID
+      # -----------------------------------
+      - name: Get RustDesk ID and Password
+        shell: powershell
+        run: |
+          $rustdesk = "C:\Program Files\RustDesk\rustdesk.exe"
+
+          $password = "MyRustDesk@123"
+
+          Write-Host "Setting RustDesk password..."
+
+          Start-Process `
+            -FilePath $rustdesk `
+            -ArgumentList "--password $password" `
+            -Wait
 
           Start-Sleep -Seconds 5
 
-          Write-Host "================================"
-          Write-Host "RustDesk ID:"
-          & $rustdesk --get-id
-          Write-Host "Password: MyRustDesk@123"
-          Write-Host "================================"
+          Write-Host ""
+          Write-Host "=========================================="
+          Write-Host "          RUSTDESK CONNECTION"
+          Write-Host "=========================================="
 
+          $id = & $rustdesk --get-id
+
+          Write-Host "RustDesk ID : $id"
+          Write-Host "Password    : $password"
+
+          Write-Host "=========================================="
+          Write-Host ""
+
+
+      # -----------------------------------
+      # 5. Verify service
+      # -----------------------------------
+      - name: Verify RustDesk
+        shell: powershell
+        run: |
+          Write-Host "Checking RustDesk process..."
+
+          Get-Process rustdesk -ErrorAction SilentlyContinue
+
+          Write-Host ""
+          Write-Host "Checking RustDesk service..."
+
+          Get-Service RustDesk -ErrorAction SilentlyContinue
+
+          Write-Host ""
+          Write-Host "RustDesk verification completed."
+
+
+      # -----------------------------------
+      # 6. Keep Windows runner alive
+      # -----------------------------------
       - name: Keep Windows Runner Alive
         shell: powershell
         run: |
-          Write-Host "Windows runner is running..."
-          Write-Host "Keep this workflow In Progress."
+          Write-Host ""
+          Write-Host "=========================================="
+          Write-Host " Windows runner is now running"
+          Write-Host " Keep this workflow IN PROGRESS"
+          Write-Host "=========================================="
+          Write-Host ""
+
           Start-Sleep -Seconds 20400
