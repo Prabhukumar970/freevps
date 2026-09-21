@@ -1,22 +1,63 @@
-name: Windows - RustDesk
+name: Windows RustDesk
 
 on:
   workflow_dispatch:
 
 jobs:
-  build:
-    name: Start Building...
+  windows:
     runs-on: windows-latest
-    
-    
+    timeout-minutes: 350
+
     steps:
-      - name: Downloading & Installing Essentials
+
+      - name: Install RustDesk
+        shell: powershell
         run: |
-          Invoke-WebRequest -Uri "https://www.dropbox.com/scl/fi/qdyd4p9t6xoabl95n5o3g/Downloads.bat?rlkey=snr74vv1vr8k5suujugvrhjtm&dl=1" -OutFile "Downloads.bat"
-          cmd /c Downloads.bat
+          $url = "https://github.com/rustdesk/rustdesk/releases/latest/download/rustdesk.exe"
+          $exe = "$env:TEMP\rustdesk.exe"
 
-      - name: Log In To AnyDesk
-        run: cmd /c show.bat
+          Write-Host "Downloading RustDesk..."
+          Invoke-WebRequest -Uri $url -OutFile $exe
 
-      - name: Time Counter
-        run: python time.py
+          Write-Host "Installing RustDesk..."
+          Start-Process $exe -ArgumentList "--silent-install" -Wait
+
+          Start-Sleep -Seconds 10
+
+      - name: Configure RustDesk
+        shell: powershell
+        run: |
+          $rustdesk = "C:\Program Files\RustDesk\rustdesk.exe"
+
+          if (!(Test-Path $rustdesk)) {
+            Write-Host "RustDesk executable not found"
+            exit 1
+          }
+
+          Write-Host "Installing RustDesk service..."
+          Start-Process $rustdesk -ArgumentList "--install-service" -Wait
+
+          Start-Sleep -Seconds 10
+
+          Write-Host "Starting RustDesk service..."
+          Start-Service RustDesk -ErrorAction SilentlyContinue
+
+          Start-Sleep -Seconds 10
+
+          Write-Host "Setting password..."
+          Start-Process $rustdesk -ArgumentList "--password MyRustDesk@123" -Wait
+
+          Start-Sleep -Seconds 5
+
+          Write-Host "================================"
+          Write-Host "RustDesk ID:"
+          & $rustdesk --get-id
+          Write-Host "Password: MyRustDesk@123"
+          Write-Host "================================"
+
+      - name: Keep Windows Runner Alive
+        shell: powershell
+        run: |
+          Write-Host "Windows runner is running..."
+          Write-Host "Keep this workflow In Progress."
+          Start-Sleep -Seconds 20400
