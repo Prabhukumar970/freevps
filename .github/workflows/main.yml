@@ -1,0 +1,43 @@
+- name: Install RustDesk
+  shell: powershell
+  run: |
+    $exe = "$env:TEMP\rustdesk.exe"
+
+    Write-Host "RustDesk installer found:"
+    Get-Item $exe | Select-Object FullName, Length
+
+    Write-Host "Starting RustDesk installer..."
+
+    $p = Start-Process `
+      -FilePath $exe `
+      -ArgumentList "--silent-install" `
+      -PassThru
+
+    Write-Host "Installer PID: $($p.Id)"
+
+    $finished = $p.WaitForExit(60000)
+
+    if (!$finished) {
+        Write-Host "Installer did not finish within 60 seconds."
+        Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+        exit 1
+    }
+
+    Write-Host "Installer exited with code: $($p.ExitCode)"
+
+    Start-Sleep -Seconds 5
+
+    $paths = @(
+      "C:\Program Files\RustDesk\rustdesk.exe",
+      "C:\Program Files (x86)\RustDesk\rustdesk.exe"
+    )
+
+    $found = $paths | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+    if (!$found) {
+        Write-Host "RustDesk executable not found."
+        exit 1
+    }
+
+    Write-Host "RustDesk installed successfully:"
+    Write-Host $found
